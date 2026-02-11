@@ -1,0 +1,655 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Stock Indumentaria</title>
+  <style>
+    :root{--bg:#f6f7fb;--card:#fff;--text:#111;--muted:#666;--b:#e6e8ef;--pri:#111;--danger:#c62828;--ok:#1b5e20}
+    *{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:var(--bg);color:var(--text)}
+    header{position:sticky;top:0;z-index:10;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--b)}
+    .wrap{max-width:1000px;margin:0 auto;padding:12px 14px}
+    .top{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+    .brand{display:flex;gap:10px;align-items:center}
+    .logo{width:38px;height:38px;border-radius:14px;background:#111;color:#fff;display:grid;place-items:center;font-weight:800}
+    .tabs{display:flex;gap:6px;flex-wrap:wrap}
+    .tab{border:1px solid var(--b);background:#fff;border-radius:999px;padding:8px 12px;font-size:13px;cursor:pointer}
+    .tab.active{background:#111;color:#fff;border-color:#111}
+    main{max-width:1000px;margin:0 auto;padding:14px}
+    .grid{display:grid;gap:12px}
+    .cards{display:grid;gap:12px;grid-template-columns:repeat(12,1fr)}
+    .card{grid-column:span 12;background:var(--card);border:1px solid var(--b);border-radius:16px;padding:12px}
+    @media(min-width:860px){.c4{grid-column:span 4}.c6{grid-column:span 6}.c8{grid-column:span 8}}
+    h2{font-size:14px;margin:0 0 10px 0}
+    .kpi{font-size:32px;font-weight:800;line-height:1}
+    .muted{color:var(--muted);font-size:12px}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:end}
+    label{font-size:12px;color:var(--muted);display:block;margin-bottom:6px}
+    input,select,textarea{width:100%;border:1px solid var(--b);border-radius:12px;padding:10px;font-size:14px;outline:none;background:#fff}
+    textarea{resize:vertical}
+    .btn{border:0;border-radius:12px;padding:10px 12px;font-weight:700;cursor:pointer}
+    .btn.pri{background:#111;color:#fff}
+    .btn.sec{background:#eef1f7}
+    .btn.dng{background:var(--danger);color:#fff}
+    .pill{display:inline-flex;gap:6px;align-items:center;border:1px solid var(--b);background:#fafbff;border-radius:999px;padding:4px 8px;font-size:12px}
+    table{width:100%;border-collapse:separate;border-spacing:0}
+    th,td{border-bottom:1px solid var(--b);padding:10px 8px;text-align:left;font-size:13px;vertical-align:top}
+    th{font-size:12px;color:var(--muted)}
+    tr:last-child td{border-bottom:0}
+    .right{text-align:right}
+    .danger{color:var(--danger);font-weight:800}
+    .ok{color:var(--ok);font-weight:800}
+    .notice{border:1px dashed var(--b);border-radius:16px;padding:12px;color:var(--muted);font-size:13px;background:#fff}
+    .tiny{font-size:11px;color:var(--muted)}
+  </style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="top">
+      <div class="brand">
+        <div class="logo">S</div>
+        <div>
+          <div style="font-weight:800">Stock Indumentaria</div>
+          <div class="muted">Single user · Guarda en tu celular (LocalStorage)</div>
+        </div>
+      </div>
+      <div class="tabs" id="tabs"></div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div id="view"></div>
+  <div class="wrap tiny" style="padding-top:6px">
+    Tip: Para usar como app, abrí el link en tu celular y “Agregar a pantalla de inicio”.
+  </div>
+</main>
+
+<script>
+(() => {
+  const SIZES = ["XS","S","M","L","XL","XXL"];
+  const GENDERS = ["Masculino","Femenino","Unisex"];
+  const DEFAULT_CATS = ["Remeras","Pantalones","Camperas","Buzos","Accesorios"];
+  const KEY = "stock_indumentaria_v1";
+
+  const $ = (sel, el=document) => el.querySelector(sel);
+  const $$ = (sel, el=document) => [...el.querySelectorAll(sel)];
+  const uid = (p="id") => `${p}_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
+  const todayISO = () => {
+    const d=new Date(); const mm=String(d.getMonth()+1).padStart(2,'0'); const dd=String(d.getDate()).padStart(2,'0');
+    return `${d.getFullYear()}-${mm}-${dd}`;
+  };
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (!raw) return {
+        categories: DEFAULT_CATS.map((n,i)=>({id:`cat_${i}`,name:n})),
+        products: [],
+        moves: []
+      };
+      const s = JSON.parse(raw);
+      if (!s.categories?.length) s.categories = DEFAULT_CATS.map((n,i)=>({id:`cat_${i}`,name:n}));
+      s.products ||= []; s.moves ||= [];
+      return s;
+    } catch {
+      return { categories: DEFAULT_CATS.map((n,i)=>({id:`cat_${i}`,name:n})), products: [], moves: [] };
+    }
+  }
+  function save() { localStorage.setItem(KEY, JSON.stringify(state)); render(); }
+  function stockByProduct() {
+    const stock = Object.fromEntries(state.products.map(p=>[p.id,0]));
+    for (const m of state.moves) {
+      stock[m.productId] ??= 0;
+      stock[m.productId] += (m.type==="IN" ? m.qty : -m.qty);
+    }
+    return stock;
+  }
+
+  let state = load();
+  let route = "Dashboard";
+
+  const routes = ["Dashboard","Inventario","Movimientos","Reportes"];
+  function renderTabs(){
+    const t = $("#tabs");
+    t.innerHTML = routes.map(r => `<button class="tab ${r===route?'active':''}" data-r="${r}">${r}</button>`).join("");
+    $$("#tabs .tab").forEach(b => b.onclick = () => { route=b.dataset.r; render(); });
+  }
+
+  function render(){
+    renderTabs();
+    const v = $("#view");
+    v.innerHTML = route==="Dashboard" ? viewDashboard()
+              : route==="Inventario" ? viewInventario()
+              : route==="Movimientos" ? viewMovimientos()
+              : viewReportes();
+    bind();
+  }
+
+  function viewDashboard(){
+    const stock = stockByProduct();
+    const totalUnits = Object.values(stock).reduce((a,b)=>a+b,0);
+    const variants = state.products.length;
+    const low = state.products
+      .map(p=>({p, s: stock[p.id]||0}))
+      .filter(x => x.s <= (x.p.minStock ?? 2))
+      .sort((a,b)=>a.s-b.s);
+    const last = [...state.moves].slice(-8).reverse().map(m=>{
+      const p = state.products.find(x=>x.id===m.productId);
+      const label = p ? `${p.name} · ${p.size} · ${p.gender}` : "Producto eliminado";
+      return `<tr>
+        <td>${m.date}</td>
+        <td><span class="pill">${m.type==="IN"?"Ingreso":"Salida"}</span></td>
+        <td>${label}</td>
+        <td class="right"><b>${m.qty}</b></td>
+        <td>${m.type==="OUT" ? (m.toPerson||"—") : "—"}</td>
+      </tr>`;
+    }).join("");
+
+    return `
+      <div class="grid">
+        <div class="cards">
+          <section class="card c4">
+            <h2>Stock total (unidades)</h2>
+            <div class="kpi">${totalUnits}</div>
+            <div class="muted">Suma de todas las variantes</div>
+          </section>
+          <section class="card c4">
+            <h2>Variantes</h2>
+            <div class="kpi">${variants}</div>
+            <div class="muted">Artículo + talle + género</div>
+          </section>
+          <section class="card c4">
+            <h2>Alertas (stock bajo)</h2>
+            <div class="kpi">${low.length}</div>
+            <div class="muted">Por variante (mínimo default 2)</div>
+          </section>
+
+          <section class="card c6">
+            <h2>Stock bajo / mínimo</h2>
+            ${low.length===0 ? `<div class="notice">Sin alertas 🎉</div>` : `
+              <div class="grid">
+                ${low.slice(0,10).map(({p,s})=>{
+                  const cat = state.categories.find(c=>c.id===p.categoryId)?.name || "—";
+                  return `<div style="display:flex;justify-content:space-between;gap:10px;border:1px solid var(--b);border-radius:14px;padding:10px">
+                    <div style="min-width:0">
+                      <div style="font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.name}</div>
+                      <div class="muted" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
+                        <span class="pill">${cat}</span>
+                        <span class="pill">${p.size}</span>
+                        <span class="pill">${p.gender}</span>
+                        <span class="pill">Mín: ${p.minStock ?? 2}</span>
+                      </div>
+                    </div>
+                    <div class="right">
+                      <div class="${s<= (p.minStock??2) ? 'danger':''}" style="font-size:18px;font-weight:900">${s}</div>
+                      <div class="muted">unid.</div>
+                    </div>
+                  </div>`;
+                }).join("")}
+              </div>
+            `}
+          </section>
+
+          <section class="card c6">
+            <h2>Últimos movimientos</h2>
+            ${state.moves.length===0 ? `<div class="notice">Todavía no registraste movimientos.</div>` : `
+              <div style="overflow:auto">
+                <table>
+                  <thead><tr><th>Fecha</th><th>Tipo</th><th>Producto</th><th class="right">Cant.</th><th>Persona</th></tr></thead>
+                  <tbody>${last}</tbody>
+                </table>
+              </div>
+            `}
+          </section>
+        </div>
+      </div>`;
+  }
+
+  function viewInventario(){
+    const catOpts = state.categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join("");
+    return `
+      <div class="cards">
+        <section class="card c4">
+          <h2>Filtros</h2>
+          <div class="grid">
+            <div>
+              <label>Artículo</label>
+              <input id="f_name" placeholder="Ej: Camisa" />
+            </div>
+            <div>
+              <label>Talle</label>
+              <select id="f_size">
+                <option value="">Todos</option>
+                ${SIZES.map(s=>`<option value="${s}">${s}</option>`).join("")}
+              </select>
+            </div>
+            <div class="notice" id="inv_totals"></div>
+          </div>
+        </section>
+
+        <section class="card c8">
+          <h2>Alta de variante (artículo + talle + género)</h2>
+          <form id="form_add" class="grid">
+            <div class="row">
+              <div style="flex:2;min-width:220px">
+                <label>Nombre artículo</label>
+                <input id="p_name" placeholder="Ej: Camisa Oxford" required />
+              </div>
+              <div style="flex:1;min-width:170px">
+                <label>Categoría</label>
+                <select id="p_cat">${catOpts}</select>
+              </div>
+            </div>
+
+            <div class="row">
+              <div style="flex:1;min-width:140px">
+                <label>Talle</label>
+                <select id="p_size">${SIZES.map(s=>`<option>${s}</option>`).join("")}</select>
+              </div>
+              <div style="flex:1;min-width:160px">
+                <label>Género</label>
+                <select id="p_gender">${GENDERS.map(g=>`<option>${g}</option>`).join("")}</select>
+              </div>
+              <div style="flex:1;min-width:140px">
+                <label>Mínimo (alerta)</label>
+                <input id="p_min" type="number" min="0" value="2" />
+              </div>
+            </div>
+
+            <div class="row">
+              <div style="flex:1;min-width:170px">
+                <label>Marca</label><input id="p_brand" placeholder="Opcional" />
+              </div>
+              <div style="flex:1;min-width:170px">
+                <label>Tela</label><input id="p_fabric" placeholder="Opcional" />
+              </div>
+              <div style="flex:1;min-width:170px">
+                <label>Color</label><input id="p_color" placeholder="Opcional" />
+              </div>
+              <div style="flex:1;min-width:170px">
+                <label>Logo</label><input id="p_logo" placeholder="Opcional" />
+              </div>
+            </div>
+
+            <div>
+              <label>Notas / descripción</label>
+              <textarea id="p_notes" rows="2" placeholder="Opcional"></textarea>
+            </div>
+
+            <div class="row">
+              <button class="btn pri" type="submit">Agregar variante</button>
+              <button class="btn sec" type="button" id="btn_add_cat">+ Categoría</button>
+              <button class="btn dng" type="button" id="btn_reset">Resetear todo</button>
+            </div>
+            <div class="tiny">* Datos guardados en este dispositivo.</div>
+          </form>
+        </section>
+
+        <section class="card" style="grid-column:span 12">
+          <h2>Inventario</h2>
+          <div style="overflow:auto">
+            <table>
+              <thead>
+                <tr>
+                  <th>Artículo</th><th>Categoría</th><th>Talle</th><th>Género</th>
+                  <th class="right">Stock</th><th class="right">Mín</th><th>Detalles</th><th class="right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="inv_rows"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>`;
+  }
+
+  function viewMovimientos(){
+    const options = state.products
+      .map(p=>({id:p.id,label:`${p.name} · ${p.size} · ${p.gender}`}))
+      .sort((a,b)=>a.label.localeCompare(b.label))
+      .map(o=>`<option value="${o.id}">${o.label}</option>`).join("");
+
+    return `
+      <div class="cards">
+        <section class="card c6">
+          <h2>Registro rápido</h2>
+          ${state.products.length===0 ? `<div class="notice">Primero agregá variantes en Inventario.</div>` : `
+            <form id="form_move" class="grid">
+              <div class="row">
+                <button class="btn pri" type="button" id="btn_in">Ingreso</button>
+                <button class="btn sec" type="button" id="btn_out">Salida</button>
+                <span class="pill" id="pill_stock">Stock actual: —</span>
+              </div>
+              <div>
+                <label>Producto (variante)</label>
+                <select id="m_prod">${options}</select>
+              </div>
+              <div class="row">
+                <div style="flex:1;min-width:180px">
+                  <label>Fecha</label>
+                  <input id="m_date" type="date" value="${todayISO()}" />
+                </div>
+                <div style="flex:1;min-width:180px">
+                  <label>Cantidad</label>
+                  <input id="m_qty" type="number" min="1" value="1" />
+                </div>
+              </div>
+              <div id="out_extra" style="display:none">
+                <label>Entregado a (solo salida)</label>
+                <input id="m_person" placeholder="Nombre y apellido" />
+              </div>
+              <div>
+                <label>Nota (opcional)</label>
+                <textarea id="m_note" rows="2" placeholder="Opcional"></textarea>
+              </div>
+              <button class="btn pri" type="submit">Guardar movimiento</button>
+              <div class="tiny">Tip: si registrás una salida mayor al stock, te avisa y podés confirmar.</div>
+            </form>
+          `}
+        </section>
+
+        <section class="card c6">
+          <h2>Historial (últimos 50)</h2>
+          ${state.moves.length===0 ? `<div class="notice">Sin movimientos todavía.</div>` : `
+            <div style="overflow:auto">
+              <table>
+                <thead><tr><th>Fecha</th><th>Tipo</th><th>Producto</th><th class="right">Cant.</th><th>Persona</th></tr></thead>
+                <tbody>
+                  ${[...state.moves].slice(-50).reverse().map(m=>{
+                    const p=state.products.find(x=>x.id===m.productId);
+                    const label=p?`${p.name} · ${p.size} · ${p.gender}`:"Producto eliminado";
+                    return `<tr>
+                      <td>${m.date}</td>
+                      <td><span class="pill">${m.type==="IN"?"Ingreso":"Salida"}</span></td>
+                      <td>${label}</td>
+                      <td class="right"><b>${m.qty}</b></td>
+                      <td>${m.type==="OUT"?(m.toPerson||"—"):"—"}</td>
+                    </tr>`;
+                  }).join("")}
+                </tbody>
+              </table>
+            </div>
+          `}
+        </section>
+      </div>`;
+  }
+
+  function viewReportes(){
+    const outs = state.moves.filter(m=>m.type==="OUT").map(m=>{
+      const p=state.products.find(x=>x.id===m.productId);
+      return {
+        ...m,
+        productName: p?.name ?? "Producto eliminado",
+        size: p?.size ?? "",
+        gender: p?.gender ?? ""
+      };
+    });
+
+    return `
+      <div class="cards">
+        <section class="card c4">
+          <h2>Filtros (salidas)</h2>
+          <div class="grid">
+            <div><label>Persona</label><input id="r_person" placeholder="Ej: Juan" /></div>
+            <div><label>Producto</label><input id="r_prod" placeholder="Ej: Camisa" /></div>
+            <div>
+              <label>Talle</label>
+              <select id="r_size">
+                <option value="">Todos</option>
+                ${SIZES.map(s=>`<option value="${s}">${s}</option>`).join("")}
+              </select>
+            </div>
+            <div class="notice"><b>Tip:</b> te muestra cuánto entregaste por talle y a quién.</div>
+          </div>
+        </section>
+
+        <section class="card c4">
+          <h2>Resumen por persona</h2>
+          <div id="sum_person" class="grid"></div>
+        </section>
+
+        <section class="card c4">
+          <h2>Resumen por talle</h2>
+          <div id="sum_size" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+        </section>
+
+        <section class="card" style="grid-column:span 12">
+          <h2>Detalle de salidas</h2>
+          <div style="overflow:auto">
+            <table>
+              <thead><tr><th>Fecha</th><th>Producto</th><th>Talle</th><th>Género</th><th class="right">Cant.</th><th>Entregado a</th></tr></thead>
+              <tbody id="r_rows"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>`;
+  }
+
+  function bind(){
+    if (route==="Inventario") bindInventario();
+    if (route==="Movimientos") bindMovimientos();
+    if (route==="Reportes") bindReportes();
+  }
+
+  function bindInventario(){
+    const stock = stockByProduct();
+
+    const renderRows = () => {
+      const fName = ($("#f_name").value||"").toLowerCase().trim();
+      const fSize = $("#f_size").value||"";
+      const rows = state.products
+        .map(p=>({p, s: stock[p.id]||0}))
+        .filter(x=>!fName || x.p.name.toLowerCase().includes(fName))
+        .filter(x=>!fSize || x.p.size===fSize)
+        .sort((a,b)=>a.p.name.localeCompare(b.p.name));
+
+      const totalUnits = rows.reduce((a,x)=>a+x.s,0);
+      $("#inv_totals").innerHTML = `<div><b>Variantes:</b> ${rows.length}</div><div><b>Stock total:</b> ${totalUnits}</div>`;
+
+      $("#inv_rows").innerHTML = rows.map(({p,s})=>{
+        const cat = state.categories.find(c=>c.id===p.categoryId)?.name || "—";
+        const low = s <= (p.minStock ?? 2);
+        const details = [
+          p.brand && `Marca: ${p.brand}`,
+          p.fabric && `Tela: ${p.fabric}`,
+          p.color && `Color: ${p.color}`,
+          p.logo && `Logo: ${p.logo}`
+        ].filter(Boolean).join(" · ") || "—";
+
+        return `<tr>
+          <td><b>${p.name}</b></td>
+          <td>${cat}</td>
+          <td><span class="pill">${p.size}</span></td>
+          <td>${p.gender}</td>
+          <td class="right ${low?'danger':''}"><b>${s}</b></td>
+          <td class="right">${p.minStock ?? 2}</td>
+          <td class="muted">${details}</td>
+          <td class="right">
+            <button class="btn sec" data-min="${p.id}" type="button">Mínimo</button>
+            <button class="btn dng" data-del="${p.id}" type="button">Borrar</button>
+          </td>
+        </tr>`;
+      }).join("");
+
+      $$("[data-min]").forEach(b=>b.onclick=()=>{
+        const id=b.dataset.min;
+        const p=state.products.find(x=>x.id===id);
+        const v=prompt("Nuevo mínimo:", String(p?.minStock ?? 2));
+        if (v===null) return;
+        const n=Number(v);
+        if (Number.isNaN(n) || n<0) return alert("Número inválido");
+        p.minStock=n; save();
+      });
+      $$("[data-del]").forEach(b=>b.onclick=()=>{
+        const id=b.dataset.del;
+        if (!confirm("¿Eliminar variante y sus movimientos?")) return;
+        state.products = state.products.filter(p=>p.id!==id);
+        state.moves = state.moves.filter(m=>m.productId!==id);
+        save();
+      });
+    };
+
+    $("#f_name").oninput = renderRows;
+    $("#f_size").onchange = renderRows;
+
+    $("#form_add").onsubmit = (e) => {
+      e.preventDefault();
+      const name = $("#p_name").value.trim();
+      if (!name) return alert("Poné un nombre de artículo.");
+      const p = {
+        id: uid("prod"),
+        name,
+        categoryId: $("#p_cat").value,
+        size: $("#p_size").value,
+        gender: $("#p_gender").value,
+        minStock: Number($("#p_min").value||2),
+        brand: $("#p_brand").value.trim() || "",
+        fabric: $("#p_fabric").value.trim() || "",
+        color: $("#p_color").value.trim() || "",
+        logo: $("#p_logo").value.trim() || "",
+        notes: $("#p_notes").value.trim() || ""
+      };
+      state.products.push(p);
+      $("#p_name").value=""; $("#p_brand").value=""; $("#p_fabric").value=""; $("#p_color").value=""; $("#p_logo").value=""; $("#p_notes").value="";
+      save();
+    };
+
+    $("#btn_add_cat").onclick = () => {
+      const n = prompt("Nombre de nueva categoría:");
+      if (!n || !n.trim()) return;
+      state.categories.push({id: uid("cat"), name: n.trim()});
+      save();
+    };
+
+    $("#btn_reset").onclick = () => {
+      if (!confirm("¿Seguro? Borra todo.")) return;
+      localStorage.removeItem(KEY);
+      state = load();
+      save();
+    };
+
+    renderRows();
+  }
+
+  function bindMovimientos(){
+    if (state.products.length===0) return;
+
+    let type = "IN";
+    const setType = (t) => {
+      type=t;
+      $("#btn_in").className = "btn " + (t==="IN"?"pri":"sec");
+      $("#btn_out").className = "btn " + (t==="OUT"?"pri":"sec");
+      $("#out_extra").style.display = (t==="OUT") ? "block" : "none";
+    };
+
+    const updateStockPill = () => {
+      const stock = stockByProduct();
+      const id = $("#m_prod").value;
+      $("#pill_stock").textContent = `Stock actual: ${stock[id] ?? 0}`;
+    };
+
+    $("#btn_in").onclick = () => setType("IN");
+    $("#btn_out").onclick = () => setType("OUT");
+    $("#m_prod").onchange = updateStockPill;
+    setType("IN");
+    updateStockPill();
+
+    $("#form_move").onsubmit = (e) => {
+      e.preventDefault();
+      const productId = $("#m_prod").value;
+      const date = $("#m_date").value || todayISO();
+      const qty = Number($("#m_qty").value||0);
+      if (!qty || qty<=0) return alert("Cantidad inválida");
+
+      const stock = stockByProduct();
+      const current = stock[productId] ?? 0;
+
+      let toPerson = "";
+      if (type==="OUT") {
+        toPerson = ($("#m_person").value||"").trim();
+        if (!toPerson) return alert("Poné a quién se entrega");
+        if (qty > current) {
+          if (!confirm(`Stock actual: ${current}. ¿Registrar igual?`)) return;
+        }
+      }
+
+      state.moves.push({
+        id: uid("mov"),
+        type,
+        productId,
+        date,
+        qty,
+        toPerson: type==="OUT" ? toPerson : "",
+        note: ($("#m_note").value||"").trim()
+      });
+
+      $("#m_qty").value="1"; $("#m_person").value=""; $("#m_note").value="";
+      save();
+    };
+  }
+
+  function bindReportes(){
+    const apply = () => {
+      const person = ($("#r_person").value||"").toLowerCase().trim();
+      const prod = ($("#r_prod").value||"").toLowerCase().trim();
+      const size = $("#r_size").value||"";
+
+      const outs = state.moves.filter(m=>m.type==="OUT").map(m=>{
+        const p=state.products.find(x=>x.id===m.productId);
+        return {
+          ...m,
+          productName: p?.name ?? "Producto eliminado",
+          size: p?.size ?? "",
+          gender: p?.gender ?? ""
+        };
+      }).filter(m => !person || (m.toPerson||"").toLowerCase().includes(person))
+        .filter(m => !prod || (m.productName||"").toLowerCase().includes(prod))
+        .filter(m => !size || m.size===size)
+        .sort((a,b)=>b.date.localeCompare(a.date));
+
+      // resumen por persona
+      const byPerson = {};
+      outs.forEach(m=>{
+        const k=(m.toPerson||"Sin nombre").trim() || "Sin nombre";
+        byPerson[k]=(byPerson[k]||0)+m.qty;
+      });
+      const personList = Object.entries(byPerson).sort((a,b)=>b[1]-a[1]);
+      $("#sum_person").innerHTML = personList.length===0 ? `<div class="notice">Sin salidas.</div>` :
+        personList.map(([k,v])=>`<div style="display:flex;justify-content:space-between;border:1px solid var(--b);border-radius:14px;padding:10px">
+          <b>${k}</b><b>${v}</b></div>`).join("");
+
+      // resumen por talle
+      const bySize = {};
+      outs.forEach(m=>{
+        const k=m.size||"—";
+        bySize[k]=(bySize[k]||0)+m.qty;
+      });
+      const sizeList = Object.entries(bySize).sort((a,b)=>b[1]-a[1]);
+      $("#sum_size").innerHTML = sizeList.length===0 ? `<span class="pill">—</span>` :
+        sizeList.map(([k,v])=>`<span class="pill">${k}: <b>${v}</b></span>`).join("");
+
+      // detalle
+      $("#r_rows").innerHTML = outs.length===0 ? `<tr><td colspan="6" class="muted">Sin resultados.</td></tr>` :
+        outs.map(m=>`<tr>
+          <td>${m.date}</td>
+          <td>${m.productName}</td>
+          <td><span class="pill">${m.size||"—"}</span></td>
+          <td>${m.gender||"—"}</td>
+          <td class="right"><b>${m.qty}</b></td>
+          <td>${m.toPerson||"—"}</td>
+        </tr>`).join("");
+    };
+
+    $("#r_person").oninput = apply;
+    $("#r_prod").oninput = apply;
+    $("#r_size").onchange = apply;
+    apply();
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>
+
