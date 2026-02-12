@@ -38,7 +38,6 @@
     tr:last-child td{border-bottom:0}
     .right{text-align:right}
     .danger{color:var(--danger);font-weight:800}
-    .ok{color:var(--ok);font-weight:800}
     .notice{border:1px dashed var(--b);border-radius:16px;padding:12px;color:var(--muted);font-size:13px;background:#fff}
     .tiny{font-size:11px;color:var(--muted)}
   </style>
@@ -80,6 +79,28 @@
     const d=new Date(); const mm=String(d.getMonth()+1).padStart(2,'0'); const dd=String(d.getDate()).padStart(2,'0');
     return `${d.getFullYear()}-${mm}-${dd}`;
   };
+
+  // ===== Helpers CSV (Excel abre CSV perfecto) =====
+  function toCSV(rows) {
+    const escape = (v) => {
+      const s = String(v ?? "");
+      const out = s.replace(/"/g, '""');
+      return `"${out}"`;
+    };
+    return rows.map(r => r.map(escape).join(",")).join("\n");
+  }
+
+  function downloadText(filename, text) {
+    const blob = new Blob([text], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
 
   function load() {
     try {
@@ -280,6 +301,7 @@
 
             <div class="row">
               <button class="btn pri" type="submit">Agregar variante</button>
+              <button class="btn sec" type="button" id="btn_export_inventory">Exportar inventario (CSV)</button>
               <button class="btn sec" type="button" id="btn_add_cat">+ Categoría</button>
               <button class="btn dng" type="button" id="btn_reset">Resetear todo</button>
             </div>
@@ -343,7 +365,12 @@
                 <label>Nota (opcional)</label>
                 <textarea id="m_note" rows="2" placeholder="Opcional"></textarea>
               </div>
-              <button class="btn pri" type="submit">Guardar movimiento</button>
+
+              <div class="row">
+                <button class="btn pri" type="submit">Guardar movimiento</button>
+                <button class="btn sec" type="button" id="btn_export_moves">Exportar movimientos (CSV)</button>
+              </div>
+
               <div class="tiny">Tip: si registrás una salida mayor al stock, te avisa y podés confirmar.</div>
             </form>
           `}
@@ -376,16 +403,6 @@
   }
 
   function viewReportes(){
-    const outs = state.moves.filter(m=>m.type==="OUT").map(m=>{
-      const p=state.products.find(x=>x.id===m.productId);
-      return {
-        ...m,
-        productName: p?.name ?? "Producto eliminado",
-        size: p?.size ?? "",
-        gender: p?.gender ?? ""
-      };
-    });
-
     return `
       <div class="cards">
         <section class="card c4">
@@ -400,7 +417,10 @@
                 ${SIZES.map(s=>`<option value="${s}">${s}</option>`).join("")}
               </select>
             </div>
-            <div class="notice"><b>Tip:</b> te muestra cuánto entregaste por talle y a quién.</div>
+
+            <button class="btn pri" type="button" id="btn_export_csv">Exportar salidas (CSV)</button>
+
+            <div class="notice"><b>Tip:</b> exporta lo que estás viendo con filtros.</div>
           </div>
         </section>
 
@@ -529,6 +549,41 @@
       save();
     };
 
+    // Exportar inventario (stock actual)
+    const btnInv = $("#btn_export_inventory");
+    if (btnInv) {
+      btnInv.onclick = () => {
+        const stock = stockByProduct();
+        const rows = [];
+        rows.push(["Articulo","Categoria","Talle","Genero","Stock","Minimo","Marca","Tela","Color","Logo","Notas"]);
+
+        state.products
+          .slice()
+          .sort((a,b)=>a.name.localeCompare(b.name))
+          .forEach(p => {
+            const cat = state.categories.find(c=>c.id===p.categoryId)?.name || "";
+            rows.push([
+              p.name,
+              cat,
+              p.size,
+              p.gender,
+              stock[p.id] ?? 0,
+              p.minStock ?? 2,
+              p.brand || "",
+              p.fabric || "",
+              p.color || "",
+              p.logo || "",
+              p.notes || ""
+            ]);
+          });
+
+        const csv = toCSV(rows);
+        const d = new Date();
+        const stamp = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+        downloadText(`inventario-stock-${stamp}.csv`, csv);
+      };
+    }
+
     renderRows();
   }
 
@@ -587,6 +642,39 @@
       $("#m_qty").value="1"; $("#m_person").value=""; $("#m_note").value="";
       save();
     };
+
+    // Exportar movimientos (IN/OUT)
+    const btnMov = $("#btn_export_moves");
+    if (btnMov) {
+      btnMov.onclick = () => {
+        const rows = [];
+        rows.push(["Fecha","Tipo","Articulo","Categoria","Talle","Genero","Cantidad","Entregado a","Nota"]);
+
+        state.moves
+          .slice()
+          .sort((a,b)=>b.date.localeCompare(a.date))
+          .forEach(m => {
+            const p = state.products.find(x=>x.id===m.productId);
+            const cat = p ? (state.categories.find(c=>c.id===p.categoryId)?.name || "") : "";
+            rows.push([
+              m.date,
+              m.type === "IN" ? "Ingreso" : "Salida",
+              p?.name || "Producto eliminado",
+              cat,
+              p?.size || "",
+              p?.gender || "",
+              m.qty,
+              m.type === "OUT" ? (m.toPerson || "") : "",
+              m.note || ""
+            ]);
+          });
+
+        const csv = toCSV(rows);
+        const d = new Date();
+        const stamp = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+        downloadText(`movimientos-${stamp}.csv`, csv);
+      };
+    }
   }
 
   function bindReportes(){
@@ -595,41 +683,47 @@
       const prod = ($("#r_prod").value||"").toLowerCase().trim();
       const size = $("#r_size").value||"";
 
-      const outs = state.moves.filter(m=>m.type==="OUT").map(m=>{
-        const p=state.products.find(x=>x.id===m.productId);
-        return {
-          ...m,
-          productName: p?.name ?? "Producto eliminado",
-          size: p?.size ?? "",
-          gender: p?.gender ?? ""
-        };
-      }).filter(m => !person || (m.toPerson||"").toLowerCase().includes(person))
+      const outs = state.moves
+        .filter(m=>m.type==="OUT")
+        .map(m=>{
+          const p=state.products.find(x=>x.id===m.productId);
+          return {
+            date: m.date,
+            productName: p?.name ?? "Producto eliminado",
+            size: p?.size ?? "",
+            gender: p?.gender ?? "",
+            qty: m.qty,
+            toPerson: m.toPerson || "",
+            note: m.note || ""
+          };
+        })
+        .filter(m => !person || (m.toPerson||"").toLowerCase().includes(person))
         .filter(m => !prod || (m.productName||"").toLowerCase().includes(prod))
         .filter(m => !size || m.size===size)
         .sort((a,b)=>b.date.localeCompare(a.date));
 
-      // resumen por persona
+      // Resumen por persona
       const byPerson = {};
       outs.forEach(m=>{
         const k=(m.toPerson||"Sin nombre").trim() || "Sin nombre";
-        byPerson[k]=(byPerson[k]||0)+m.qty;
+        byPerson[k]=(byPerson[k]||0)+Number(m.qty||0);
       });
       const personList = Object.entries(byPerson).sort((a,b)=>b[1]-a[1]);
       $("#sum_person").innerHTML = personList.length===0 ? `<div class="notice">Sin salidas.</div>` :
         personList.map(([k,v])=>`<div style="display:flex;justify-content:space-between;border:1px solid var(--b);border-radius:14px;padding:10px">
           <b>${k}</b><b>${v}</b></div>`).join("");
 
-      // resumen por talle
+      // Resumen por talle
       const bySize = {};
       outs.forEach(m=>{
         const k=m.size||"—";
-        bySize[k]=(bySize[k]||0)+m.qty;
+        bySize[k]=(bySize[k]||0)+Number(m.qty||0);
       });
       const sizeList = Object.entries(bySize).sort((a,b)=>b[1]-a[1]);
       $("#sum_size").innerHTML = sizeList.length===0 ? `<span class="pill">—</span>` :
         sizeList.map(([k,v])=>`<span class="pill">${k}: <b>${v}</b></span>`).join("");
 
-      // detalle
+      // Detalle
       $("#r_rows").innerHTML = outs.length===0 ? `<tr><td colspan="6" class="muted">Sin resultados.</td></tr>` :
         outs.map(m=>`<tr>
           <td>${m.date}</td>
@@ -639,6 +733,21 @@
           <td class="right"><b>${m.qty}</b></td>
           <td>${m.toPerson||"—"}</td>
         </tr>`).join("");
+
+      // Exportar salidas filtradas
+      const btn = $("#btn_export_csv");
+      if (btn) {
+        btn.onclick = () => {
+          const header = ["Fecha","Producto","Talle","Género","Cantidad","Entregado a","Nota"];
+          const rows = [header].concat(
+            outs.map(m => [m.date, m.productName, m.size, m.gender, m.qty, m.toPerson, m.note || ""])
+          );
+          const csv = toCSV(rows);
+          const d = new Date();
+          const stamp = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+          downloadText(`reporte-salidas-${stamp}.csv`, csv);
+        };
+      }
     };
 
     $("#r_person").oninput = apply;
@@ -652,4 +761,3 @@
 </script>
 </body>
 </html>
-
