@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Stock Indumentaria</title>
   <style>
-    :root{--bg:#f6f7fb;--card:#fff;--text:#111;--muted:#666;--b:#e6e8ef;--pri:#111;--danger:#c62828;--ok:#1b5e20}
+    :root{--bg:#f6f7fb;--card:#fff;--text:#111;--muted:#666;--b:#e6e8ef;--pri:#111;--danger:#c62828}
     *{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:var(--bg);color:var(--text)}
     header{position:sticky;top:0;z-index:10;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--b)}
     .wrap{max-width:1000px;margin:0 auto;padding:12px 14px}
@@ -67,7 +67,8 @@
 
 <script>
 (() => {
-  const SIZES = ["XS","S","M","L","XL","XXL","xxxl"];
+  // ✅ incluye XXXL
+  const SIZES = ["XS","S","M","L","XL","XXL","XXXL"];
   const GENDERS = ["Masculino","Femenino","Unisex"];
   const DEFAULT_CATS = ["Remeras","Pantalones","Camperas","Buzos","Accesorios"];
   const KEY = "stock_indumentaria_v1";
@@ -87,9 +88,8 @@
       const out = s.replace(/"/g, '""');
       return `"${out}"`;
     };
-    return rows.map(r => r.map(escape).join(",")).join("\n");
+    return rows.map(r => r.map(escape).join(";")).join("\n");
   }
-
   function downloadText(filename, text) {
     const blob = new Blob([text], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -156,6 +156,7 @@
       .map(p=>({p, s: stock[p.id]||0}))
       .filter(x => x.s <= (x.p.minStock ?? 2))
       .sort((a,b)=>a.s-b.s);
+
     const last = [...state.moves].slice(-8).reverse().map(m=>{
       const p = state.products.find(x=>x.id===m.productId);
       const label = p ? `${p.name} · ${p.size} · ${p.gender}` : "Producto eliminado";
@@ -239,20 +240,24 @@
               <label>Artículo</label>
               <input id="f_name" placeholder="Ej: Camisa" />
             </div>
+
+            <!-- ✅ Filtro por categoría -->
+            <div>
+              <label>Categoría</label>
+              <select id="f_cat">
+                <option value="">Todas</option>
+                ${state.categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join("")}
+              </select>
+            </div>
+
             <div>
               <label>Talle</label>
-              <div>
-  <label>Categoría</label>
-  <select id="f_cat">
-    <option value="">Todas</option>
-    ${state.categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join("")}
-  </select>
-</div>
               <select id="f_size">
                 <option value="">Todos</option>
                 ${SIZES.map(s=>`<option value="${s}">${s}</option>`).join("")}
               </select>
             </div>
+
             <div class="notice" id="inv_totals"></div>
           </div>
         </section>
@@ -464,14 +469,14 @@
 
     const renderRows = () => {
       const fName = ($("#f_name").value||"").toLowerCase().trim();
+      const fCat = ($("#f_cat")?.value||"");
       const fSize = $("#f_size").value||"";
+
       const rows = state.products
         .map(p=>({p, s: stock[p.id]||0}))
         .filter(x=>!fName || x.p.name.toLowerCase().includes(fName))
-        .filter(x => !fCat || x.p.categoryId === fCat)
+        .filter(x=>!fCat || x.p.categoryId === fCat)   // ✅ filtro categoría
         .filter(x=>!fSize || x.p.size===fSize)
-const fCat = $("#f_cat") ? ($("#f_cat").value||"") : "";
-
         .sort((a,b)=>a.p.name.localeCompare(b.p.name));
 
       const totalUnits = rows.reduce((a,x)=>a+x.s,0);
@@ -521,8 +526,8 @@ const fCat = $("#f_cat") ? ($("#f_cat").value||"") : "";
     };
 
     $("#f_name").oninput = renderRows;
+    $("#f_cat").onchange = renderRows;   // ✅ evento para categoría
     $("#f_size").onchange = renderRows;
-if ($("#f_cat")) $("#f_cat").onchange = renderRows;
 
     $("#form_add").onsubmit = (e) => {
       e.preventDefault();
@@ -561,39 +566,29 @@ if ($("#f_cat")) $("#f_cat").onchange = renderRows;
     };
 
     // Exportar inventario (stock actual)
-    const btnInv = $("#btn_export_inventory");
-    if (btnInv) {
-      btnInv.onclick = () => {
-        const stock = stockByProduct();
-        const rows = [];
-        rows.push(["Articulo","Categoria","Talle","Genero","Stock","Minimo","Marca","Tela","Color","Logo","Notas"]);
+    $("#btn_export_inventory").onclick = () => {
+      const stock = stockByProduct();
+      const rows = [];
+      rows.push(["Articulo","Categoria","Talle","Genero","Stock","Minimo","Marca","Tela","Color","Logo","Notas"]);
 
-        state.products
-          .slice()
-          .sort((a,b)=>a.name.localeCompare(b.name))
-          .forEach(p => {
-            const cat = state.categories.find(c=>c.id===p.categoryId)?.name || "";
-            rows.push([
-              p.name,
-              cat,
-              p.size,
-              p.gender,
-              stock[p.id] ?? 0,
-              p.minStock ?? 2,
-              p.brand || "",
-              p.fabric || "",
-              p.color || "",
-              p.logo || "",
-              p.notes || ""
-            ]);
-          });
+      state.products
+        .slice()
+        .sort((a,b)=>a.name.localeCompare(b.name))
+        .forEach(p => {
+          const cat = state.categories.find(c=>c.id===p.categoryId)?.name || "";
+          rows.push([
+            p.name, cat, p.size, p.gender,
+            stock[p.id] ?? 0,
+            p.minStock ?? 2,
+            p.brand || "", p.fabric || "", p.color || "", p.logo || "", p.notes || ""
+          ]);
+        });
 
-        const csv = toCSV(rows);
-        const d = new Date();
-        const stamp = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-        downloadText(`inventario-stock-${stamp}.csv`, csv);
-      };
-    }
+      const csv = toCSV(rows);
+      const d = new Date();
+      const stamp = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+      downloadText(`inventario-stock-${stamp}.csv`, csv);
+    };
 
     renderRows();
   }
@@ -655,37 +650,34 @@ if ($("#f_cat")) $("#f_cat").onchange = renderRows;
     };
 
     // Exportar movimientos (IN/OUT)
-    const btnMov = $("#btn_export_moves");
-    if (btnMov) {
-      btnMov.onclick = () => {
-        const rows = [];
-        rows.push(["Fecha","Tipo","Articulo","Categoria","Talle","Genero","Cantidad","Entregado a","Nota"]);
+    $("#btn_export_moves").onclick = () => {
+      const rows = [];
+      rows.push(["Fecha","Tipo","Articulo","Categoria","Talle","Genero","Cantidad","Entregado a","Nota"]);
 
-        state.moves
-          .slice()
-          .sort((a,b)=>b.date.localeCompare(a.date))
-          .forEach(m => {
-            const p = state.products.find(x=>x.id===m.productId);
-            const cat = p ? (state.categories.find(c=>c.id===p.categoryId)?.name || "") : "";
-            rows.push([
-              m.date,
-              m.type === "IN" ? "Ingreso" : "Salida",
-              p?.name || "Producto eliminado",
-              cat,
-              p?.size || "",
-              p?.gender || "",
-              m.qty,
-              m.type === "OUT" ? (m.toPerson || "") : "",
-              m.note || ""
-            ]);
-          });
+      state.moves
+        .slice()
+        .sort((a,b)=>b.date.localeCompare(a.date))
+        .forEach(m => {
+          const p = state.products.find(x=>x.id===m.productId);
+          const cat = p ? (state.categories.find(c=>c.id===p.categoryId)?.name || "") : "";
+          rows.push([
+            m.date,
+            m.type === "IN" ? "Ingreso" : "Salida",
+            p?.name || "Producto eliminado",
+            cat,
+            p?.size || "",
+            p?.gender || "",
+            m.qty,
+            m.type === "OUT" ? (m.toPerson || "") : "",
+            m.note || ""
+          ]);
+        });
 
-        const csv = toCSV(rows);
-        const d = new Date();
-        const stamp = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-        downloadText(`movimientos-${stamp}.csv`, csv);
-      };
-    }
+      const csv = toCSV(rows);
+      const d = new Date();
+      const stamp = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+      downloadText(`movimientos-${stamp}.csv`, csv);
+    };
   }
 
   function bindReportes(){
@@ -713,7 +705,6 @@ if ($("#f_cat")) $("#f_cat").onchange = renderRows;
         .filter(m => !size || m.size===size)
         .sort((a,b)=>b.date.localeCompare(a.date));
 
-      // Resumen por persona
       const byPerson = {};
       outs.forEach(m=>{
         const k=(m.toPerson||"Sin nombre").trim() || "Sin nombre";
@@ -724,7 +715,6 @@ if ($("#f_cat")) $("#f_cat").onchange = renderRows;
         personList.map(([k,v])=>`<div style="display:flex;justify-content:space-between;border:1px solid var(--b);border-radius:14px;padding:10px">
           <b>${k}</b><b>${v}</b></div>`).join("");
 
-      // Resumen por talle
       const bySize = {};
       outs.forEach(m=>{
         const k=m.size||"—";
@@ -734,7 +724,6 @@ if ($("#f_cat")) $("#f_cat").onchange = renderRows;
       $("#sum_size").innerHTML = sizeList.length===0 ? `<span class="pill">—</span>` :
         sizeList.map(([k,v])=>`<span class="pill">${k}: <b>${v}</b></span>`).join("");
 
-      // Detalle
       $("#r_rows").innerHTML = outs.length===0 ? `<tr><td colspan="6" class="muted">Sin resultados.</td></tr>` :
         outs.map(m=>`<tr>
           <td>${m.date}</td>
@@ -745,20 +734,16 @@ if ($("#f_cat")) $("#f_cat").onchange = renderRows;
           <td>${m.toPerson||"—"}</td>
         </tr>`).join("");
 
-      // Exportar salidas filtradas
-      const btn = $("#btn_export_csv");
-      if (btn) {
-        btn.onclick = () => {
-          const header = ["Fecha","Producto","Talle","Género","Cantidad","Entregado a","Nota"];
-          const rows = [header].concat(
-            outs.map(m => [m.date, m.productName, m.size, m.gender, m.qty, m.toPerson, m.note || ""])
-          );
-          const csv = toCSV(rows);
-          const d = new Date();
-          const stamp = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-          downloadText(`reporte-salidas-${stamp}.csv`, csv);
-        };
-      }
+      $("#btn_export_csv").onclick = () => {
+        const header = ["Fecha","Producto","Talle","Género","Cantidad","Entregado a","Nota"];
+        const rows = [header].concat(
+          outs.map(m => [m.date, m.productName, m.size, m.gender, m.qty, m.toPerson, m.note || ""])
+        );
+        const csv = toCSV(rows);
+        const d = new Date();
+        const stamp = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+        downloadText(`reporte-salidas-${stamp}.csv`, csv);
+      };
     };
 
     $("#r_person").oninput = apply;
