@@ -241,6 +241,13 @@
             </div>
             <div>
               <label>Talle</label>
+              <div>
+  <label>Categoría</label>
+  <select id="f_cat">
+    <option value="">Todas</option>
+    ${state.categories.map(c=>`<option value="${c.id}">${c.name}</option>`).join("")}
+  </select>
+</div>
               <select id="f_size">
                 <option value="">Todos</option>
                 ${SIZES.map(s=>`<option value="${s}">${s}</option>`).join("")}
@@ -461,7 +468,10 @@
       const rows = state.products
         .map(p=>({p, s: stock[p.id]||0}))
         .filter(x=>!fName || x.p.name.toLowerCase().includes(fName))
+        .filter(x => !fCat || x.p.categoryId === fCat)
         .filter(x=>!fSize || x.p.size===fSize)
+const fCat = $("#f_cat") ? ($("#f_cat").value||"") : "";
+
         .sort((a,b)=>a.p.name.localeCompare(b.p.name));
 
       const totalUnits = rows.reduce((a,x)=>a+x.s,0);
@@ -512,6 +522,7 @@
 
     $("#f_name").oninput = renderRows;
     $("#f_size").onchange = renderRows;
+if ($("#f_cat")) $("#f_cat").onchange = renderRows;
 
     $("#form_add").onsubmit = (e) => {
       e.preventDefault();
