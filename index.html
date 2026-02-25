@@ -40,6 +40,7 @@
     .danger{color:var(--danger);font-weight:800}
     .notice{border:1px dashed var(--b);border-radius:16px;padding:12px;color:var(--muted);font-size:13px;background:#fff}
     .tiny{font-size:11px;color:var(--muted)}
+    .line{border:1px solid var(--b);border-radius:14px;padding:10px}
   </style>
 </head>
 <body>
@@ -68,7 +69,7 @@
 <script>
 (() => {
   // ✅ incluye XXXL
-  const SIZES = ["XS","S","M","L","XL","XXL","XXXL","36","37", "38", "39","40", "41","42","43","44","45","46"];
+  const SIZES = ["XS","S","M","L","XL","XXL","XXXL"];
   const GENDERS = ["Masculino","Femenino","Unisex"];
   const DEFAULT_CATS = ["Remeras","Pantalones","Camperas","Buzos","Accesorios"];
   const KEY = "stock_indumentaria_v1";
@@ -81,13 +82,14 @@
     return `${d.getFullYear()}-${mm}-${dd}`;
   };
 
-  // ===== Helpers CSV (Excel abre CSV perfecto) =====
+  // ===== Helpers CSV (Excel ES: separador ;) =====
   function toCSV(rows) {
     const escape = (v) => {
       const s = String(v ?? "");
       const out = s.replace(/"/g, '""');
       return `"${out}"`;
     };
+    // ✅ separador ';' para Excel en español
     return rows.map(r => r.map(escape).join(";")).join("\n");
   }
   function downloadText(filename, text) {
@@ -346,8 +348,9 @@
 
     return `
       <div class="cards">
+
         <section class="card c6">
-          <h2>Registro rápido</h2>
+          <h2>Registro rápido (1 ítem)</h2>
           ${state.products.length===0 ? `<div class="notice">Primero agregá variantes en Inventario.</div>` : `
             <form id="form_move" class="grid">
               <div class="row">
@@ -389,6 +392,39 @@
         </section>
 
         <section class="card c6">
+          <h2>Entrega Temporada/Ingreso (salida por lote)</h2>
+          ${state.products.length===0 ? `<div class="notice">Primero agregá variantes en Inventario.</div>` : `
+            <form id="form_batch" class="grid">
+              <div class="row">
+                <div style="flex:1;min-width:180px">
+                  <label>Fecha</label>
+                  <input id="b_date" type="date" value="${todayISO()}" />
+                </div>
+                <div style="flex:2;min-width:220px">
+                  <label>Persona</label>
+                  <input id="b_person" placeholder="Ej: Andrea Pérez" />
+                </div>
+              </div>
+
+              <div>
+                <label>Nota (opcional)</label>
+                <textarea id="b_note" rows="2" placeholder="Ej: Entrega Temporada Verano / Ingreso"></textarea>
+              </div>
+
+              <div>
+                <label>Ítems a entregar</label>
+                <div id="batch_rows" class="grid"></div>
+                <div class="row" style="margin-top:10px">
+                  <button class="btn sec" type="button" id="btn_add_row">+ Agregar ítem</button>
+                  <button class="btn pri" type="submit">Guardar entrega (varios ítems)</button>
+                </div>
+                <div class="tiny">Se registran varias salidas con la misma persona y fecha, y se descuenta el inventario.</div>
+              </div>
+            </form>
+          `}
+        </section>
+
+        <section class="card" style="grid-column:span 12">
           <h2>Historial (últimos 50)</h2>
           ${state.moves.length===0 ? `<div class="notice">Sin movimientos todavía.</div>` : `
             <div style="overflow:auto">
@@ -411,6 +447,9 @@
             </div>
           `}
         </section>
+
+        <!-- template hidden para reutilizar options en JS -->
+        <div id="batch_options" style="display:none">${options}</div>
       </div>`;
   }
 
@@ -475,7 +514,7 @@
       const rows = state.products
         .map(p=>({p, s: stock[p.id]||0}))
         .filter(x=>!fName || x.p.name.toLowerCase().includes(fName))
-        .filter(x=>!fCat || x.p.categoryId === fCat)   // ✅ filtro categoría
+        .filter(x=>!fCat || x.p.categoryId === fCat)
         .filter(x=>!fSize || x.p.size===fSize)
         .sort((a,b)=>a.p.name.localeCompare(b.p.name));
 
@@ -526,7 +565,7 @@
     };
 
     $("#f_name").oninput = renderRows;
-    $("#f_cat").onchange = renderRows;   // ✅ evento para categoría
+    $("#f_cat").onchange = renderRows;
     $("#f_size").onchange = renderRows;
 
     $("#form_add").onsubmit = (e) => {
@@ -596,6 +635,7 @@
   function bindMovimientos(){
     if (state.products.length===0) return;
 
+    // ===== Registro rápido (1 item) =====
     let type = "IN";
     const setType = (t) => {
       type=t;
@@ -677,6 +717,111 @@
       const d = new Date();
       const stamp = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
       downloadText(`movimientos-${stamp}.csv`, csv);
+    };
+
+    // ===== Entrega por lote (varios items) =====
+    const optionsHTML = ($("#batch_options")?.innerHTML || "").trim();
+
+    const batchRowHTML = () => `
+      <div class="line batch_line">
+        <div class="row">
+          <div style="flex:3;min-width:220px">
+            <label>Variante</label>
+            <select class="b_prod">${optionsHTML}</select>
+          </div>
+          <div style="flex:1;min-width:130px">
+            <label>Cantidad</label>
+            <input class="b_qty" type="number" min="1" value="1" />
+          </div>
+          <div style="min-width:120px">
+            <label>&nbsp;</label>
+            <button class="btn dng b_remove" type="button">Quitar</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const addRow = () => {
+      const cont = $("#batch_rows");
+      if (!cont) return;
+      cont.insertAdjacentHTML("beforeend", batchRowHTML());
+      bindRowButtons();
+    };
+
+    const bindRowButtons = () => {
+      $$(".b_remove").forEach(btn => {
+        btn.onclick = () => {
+          const line = btn.closest(".batch_line");
+          if (line) line.remove();
+          const cont = $("#batch_rows");
+          if (cont && cont.children.length === 0) addRow();
+        };
+      });
+    };
+
+    $("#btn_add_row").onclick = addRow;
+
+    // iniciar con 1 fila
+    const cont = $("#batch_rows");
+    if (cont && cont.children.length === 0) addRow();
+
+    $("#form_batch").onsubmit = (e) => {
+      e.preventDefault();
+      const date = ($("#b_date").value || todayISO());
+      const person = ($("#b_person").value || "").trim();
+      const noteRaw = ($("#b_note").value || "").trim();
+      const note = noteRaw ? `Entrega Temporada/Ingreso: ${noteRaw}` : "Entrega Temporada/Ingreso";
+
+      if (!person) return alert("Poné la persona.");
+
+      const lines = $$(".batch_line");
+      if (lines.length === 0) return alert("Agregá al menos un ítem.");
+
+      // sumar por productoId (si se repite en varias filas)
+      const sum: Record<string, number> = {};
+      for (const line of lines) {
+        const pid = line.querySelector(".b_prod")?.value || "";
+        const qty = Number(line.querySelector(".b_qty")?.value || 0);
+        if (!pid) continue;
+        if (!qty || qty <= 0) continue;
+        sum[pid] = (sum[pid] || 0) + qty;
+      }
+
+      const entries = Object.entries(sum);
+      if (entries.length === 0) return alert("Cargá cantidades válidas.");
+
+      // control stock y confirmaciones
+      const stock = stockByProduct();
+      for (const [pid, qty] of entries) {
+        const current = stock[pid] ?? 0;
+        if (qty > current) {
+          const p = state.products.find(x=>x.id===pid);
+          const label = p ? `${p.name} · ${p.size} · ${p.gender}` : "Variante";
+          const ok = confirm(`ATENCIÓN: "${label}" tiene stock ${current} y querés entregar ${qty}. ¿Registrar igual?`);
+          if (!ok) return; // cancela toda la entrega
+        }
+      }
+
+      // crear movimientos OUT
+      for (const [pid, qty] of entries) {
+        state.moves.push({
+          id: uid("mov"),
+          type: "OUT",
+          productId: pid,
+          date,
+          qty,
+          toPerson: person,
+          note
+        });
+      }
+
+      // limpiar formulario (dejamos 1 fila)
+      $("#b_person").value = "";
+      $("#b_note").value = "";
+      $("#batch_rows").innerHTML = "";
+      addRow();
+
+      save();
     };
   }
 
