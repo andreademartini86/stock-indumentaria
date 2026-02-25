@@ -40,7 +40,6 @@
     .danger{color:var(--danger);font-weight:800}
     .notice{border:1px dashed var(--b);border-radius:16px;padding:12px;color:var(--muted);font-size:13px;background:#fff}
     .tiny{font-size:11px;color:var(--muted)}
-    .line{border:1px solid var(--b);border-radius:14px;padding:10px}
   </style>
 </head>
 <body>
@@ -68,8 +67,7 @@
 
 <script>
 (() => {
-  // ✅ incluye XXXL
-  const SIZES = ["XS","S","M","L","XL","XXL","XXXL"];
+  const SIZES = ["XS","S","M","L","XL","XXL","XXXL"]; // ✅ incluye XXXL
   const GENDERS = ["Masculino","Femenino","Unisex"];
   const DEFAULT_CATS = ["Remeras","Pantalones","Camperas","Buzos","Accesorios"];
   const KEY = "stock_indumentaria_v1";
@@ -82,14 +80,13 @@
     return `${d.getFullYear()}-${mm}-${dd}`;
   };
 
-  // ===== Helpers CSV (Excel ES: separador ;) =====
+  // CSV con separador ';' (Excel español)
   function toCSV(rows) {
     const escape = (v) => {
       const s = String(v ?? "");
       const out = s.replace(/"/g, '""');
       return `"${out}"`;
     };
-    // ✅ separador ';' para Excel en español
     return rows.map(r => r.map(escape).join(";")).join("\n");
   }
   function downloadText(filename, text) {
@@ -243,7 +240,6 @@
               <input id="f_name" placeholder="Ej: Camisa" />
             </div>
 
-            <!-- ✅ Filtro por categoría -->
             <div>
               <label>Categoría</label>
               <select id="f_cat">
@@ -294,18 +290,10 @@
             </div>
 
             <div class="row">
-              <div style="flex:1;min-width:170px">
-                <label>Marca</label><input id="p_brand" placeholder="Opcional" />
-              </div>
-              <div style="flex:1;min-width:170px">
-                <label>Tela</label><input id="p_fabric" placeholder="Opcional" />
-              </div>
-              <div style="flex:1;min-width:170px">
-                <label>Color</label><input id="p_color" placeholder="Opcional" />
-              </div>
-              <div style="flex:1;min-width:170px">
-                <label>Logo</label><input id="p_logo" placeholder="Opcional" />
-              </div>
+              <div style="flex:1;min-width:170px"><label>Marca</label><input id="p_brand" placeholder="Opcional" /></div>
+              <div style="flex:1;min-width:170px"><label>Tela</label><input id="p_fabric" placeholder="Opcional" /></div>
+              <div style="flex:1;min-width:170px"><label>Color</label><input id="p_color" placeholder="Opcional" /></div>
+              <div style="flex:1;min-width:170px"><label>Logo</label><input id="p_logo" placeholder="Opcional" /></div>
             </div>
 
             <div>
@@ -348,9 +336,8 @@
 
     return `
       <div class="cards">
-
         <section class="card c6">
-          <h2>Registro rápido (1 ítem)</h2>
+          <h2>Registro rápido</h2>
           ${state.products.length===0 ? `<div class="notice">Primero agregá variantes en Inventario.</div>` : `
             <form id="form_move" class="grid">
               <div class="row">
@@ -392,39 +379,6 @@
         </section>
 
         <section class="card c6">
-          <h2>Entrega Temporada/Ingreso (salida por lote)</h2>
-          ${state.products.length===0 ? `<div class="notice">Primero agregá variantes en Inventario.</div>` : `
-            <form id="form_batch" class="grid">
-              <div class="row">
-                <div style="flex:1;min-width:180px">
-                  <label>Fecha</label>
-                  <input id="b_date" type="date" value="${todayISO()}" />
-                </div>
-                <div style="flex:2;min-width:220px">
-                  <label>Persona</label>
-                  <input id="b_person" placeholder="Ej: Andrea Pérez" />
-                </div>
-              </div>
-
-              <div>
-                <label>Nota (opcional)</label>
-                <textarea id="b_note" rows="2" placeholder="Ej: Entrega Temporada Verano / Ingreso"></textarea>
-              </div>
-
-              <div>
-                <label>Ítems a entregar</label>
-                <div id="batch_rows" class="grid"></div>
-                <div class="row" style="margin-top:10px">
-                  <button class="btn sec" type="button" id="btn_add_row">+ Agregar ítem</button>
-                  <button class="btn pri" type="submit">Guardar entrega (varios ítems)</button>
-                </div>
-                <div class="tiny">Se registran varias salidas con la misma persona y fecha, y se descuenta el inventario.</div>
-              </div>
-            </form>
-          `}
-        </section>
-
-        <section class="card" style="grid-column:span 12">
           <h2>Historial (últimos 50)</h2>
           ${state.moves.length===0 ? `<div class="notice">Sin movimientos todavía.</div>` : `
             <div style="overflow:auto">
@@ -447,9 +401,6 @@
             </div>
           `}
         </section>
-
-        <!-- template hidden para reutilizar options en JS -->
-        <div id="batch_options" style="display:none">${options}</div>
       </div>`;
   }
 
@@ -604,29 +555,22 @@
       save();
     };
 
-    // Exportar inventario (stock actual)
     $("#btn_export_inventory").onclick = () => {
       const stock = stockByProduct();
       const rows = [];
       rows.push(["Articulo","Categoria","Talle","Genero","Stock","Minimo","Marca","Tela","Color","Logo","Notas"]);
-
-      state.products
-        .slice()
-        .sort((a,b)=>a.name.localeCompare(b.name))
-        .forEach(p => {
-          const cat = state.categories.find(c=>c.id===p.categoryId)?.name || "";
-          rows.push([
-            p.name, cat, p.size, p.gender,
-            stock[p.id] ?? 0,
-            p.minStock ?? 2,
-            p.brand || "", p.fabric || "", p.color || "", p.logo || "", p.notes || ""
-          ]);
-        });
-
-      const csv = toCSV(rows);
+      state.products.slice().sort((a,b)=>a.name.localeCompare(b.name)).forEach(p => {
+        const cat = state.categories.find(c=>c.id===p.categoryId)?.name || "";
+        rows.push([
+          p.name, cat, p.size, p.gender,
+          stock[p.id] ?? 0,
+          p.minStock ?? 2,
+          p.brand || "", p.fabric || "", p.color || "", p.logo || "", p.notes || ""
+        ]);
+      });
       const d = new Date();
       const stamp = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-      downloadText(`inventario-stock-${stamp}.csv`, csv);
+      downloadText(`inventario-stock-${stamp}.csv`, toCSV(rows));
     };
 
     renderRows();
@@ -635,7 +579,6 @@
   function bindMovimientos(){
     if (state.products.length===0) return;
 
-    // ===== Registro rápido (1 item) =====
     let type = "IN";
     const setType = (t) => {
       type=t;
@@ -689,139 +632,27 @@
       save();
     };
 
-    // Exportar movimientos (IN/OUT)
     $("#btn_export_moves").onclick = () => {
       const rows = [];
       rows.push(["Fecha","Tipo","Articulo","Categoria","Talle","Genero","Cantidad","Entregado a","Nota"]);
-
-      state.moves
-        .slice()
-        .sort((a,b)=>b.date.localeCompare(a.date))
-        .forEach(m => {
-          const p = state.products.find(x=>x.id===m.productId);
-          const cat = p ? (state.categories.find(c=>c.id===p.categoryId)?.name || "") : "";
-          rows.push([
-            m.date,
-            m.type === "IN" ? "Ingreso" : "Salida",
-            p?.name || "Producto eliminado",
-            cat,
-            p?.size || "",
-            p?.gender || "",
-            m.qty,
-            m.type === "OUT" ? (m.toPerson || "") : "",
-            m.note || ""
-          ]);
-        });
-
-      const csv = toCSV(rows);
+      state.moves.slice().sort((a,b)=>b.date.localeCompare(a.date)).forEach(m => {
+        const p = state.products.find(x=>x.id===m.productId);
+        const cat = p ? (state.categories.find(c=>c.id===p.categoryId)?.name || "") : "";
+        rows.push([
+          m.date,
+          m.type === "IN" ? "Ingreso" : "Salida",
+          p?.name || "Producto eliminado",
+          cat,
+          p?.size || "",
+          p?.gender || "",
+          m.qty,
+          m.type === "OUT" ? (m.toPerson || "") : "",
+          m.note || ""
+        ]);
+      });
       const d = new Date();
       const stamp = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-      downloadText(`movimientos-${stamp}.csv`, csv);
-    };
-
-    // ===== Entrega por lote (varios items) =====
-    const optionsHTML = ($("#batch_options")?.innerHTML || "").trim();
-
-    const batchRowHTML = () => `
-      <div class="line batch_line">
-        <div class="row">
-          <div style="flex:3;min-width:220px">
-            <label>Variante</label>
-            <select class="b_prod">${optionsHTML}</select>
-          </div>
-          <div style="flex:1;min-width:130px">
-            <label>Cantidad</label>
-            <input class="b_qty" type="number" min="1" value="1" />
-          </div>
-          <div style="min-width:120px">
-            <label>&nbsp;</label>
-            <button class="btn dng b_remove" type="button">Quitar</button>
-          </div>
-        </div>
-      </div>
-    `;
-
-    const addRow = () => {
-      const cont = $("#batch_rows");
-      if (!cont) return;
-      cont.insertAdjacentHTML("beforeend", batchRowHTML());
-      bindRowButtons();
-    };
-
-    const bindRowButtons = () => {
-      $$(".b_remove").forEach(btn => {
-        btn.onclick = () => {
-          const line = btn.closest(".batch_line");
-          if (line) line.remove();
-          const cont = $("#batch_rows");
-          if (cont && cont.children.length === 0) addRow();
-        };
-      });
-    };
-
-    $("#btn_add_row").onclick = addRow;
-
-    // iniciar con 1 fila
-    const cont = $("#batch_rows");
-    if (cont && cont.children.length === 0) addRow();
-
-    $("#form_batch").onsubmit = (e) => {
-      e.preventDefault();
-      const date = ($("#b_date").value || todayISO());
-      const person = ($("#b_person").value || "").trim();
-      const noteRaw = ($("#b_note").value || "").trim();
-      const note = noteRaw ? `Entrega Temporada/Ingreso: ${noteRaw}` : "Entrega Temporada/Ingreso";
-
-      if (!person) return alert("Poné la persona.");
-
-      const lines = $$(".batch_line");
-      if (lines.length === 0) return alert("Agregá al menos un ítem.");
-
-      // sumar por productoId (si se repite en varias filas)
-      const sum: Record<string, number> = {};
-      for (const line of lines) {
-        const pid = line.querySelector(".b_prod")?.value || "";
-        const qty = Number(line.querySelector(".b_qty")?.value || 0);
-        if (!pid) continue;
-        if (!qty || qty <= 0) continue;
-        sum[pid] = (sum[pid] || 0) + qty;
-      }
-
-      const entries = Object.entries(sum);
-      if (entries.length === 0) return alert("Cargá cantidades válidas.");
-
-      // control stock y confirmaciones
-      const stock = stockByProduct();
-      for (const [pid, qty] of entries) {
-        const current = stock[pid] ?? 0;
-        if (qty > current) {
-          const p = state.products.find(x=>x.id===pid);
-          const label = p ? `${p.name} · ${p.size} · ${p.gender}` : "Variante";
-          const ok = confirm(`ATENCIÓN: "${label}" tiene stock ${current} y querés entregar ${qty}. ¿Registrar igual?`);
-          if (!ok) return; // cancela toda la entrega
-        }
-      }
-
-      // crear movimientos OUT
-      for (const [pid, qty] of entries) {
-        state.moves.push({
-          id: uid("mov"),
-          type: "OUT",
-          productId: pid,
-          date,
-          qty,
-          toPerson: person,
-          note
-        });
-      }
-
-      // limpiar formulario (dejamos 1 fila)
-      $("#b_person").value = "";
-      $("#b_note").value = "";
-      $("#batch_rows").innerHTML = "";
-      addRow();
-
-      save();
+      downloadText(`movimientos-${stamp}.csv`, toCSV(rows));
     };
   }
 
@@ -857,8 +688,7 @@
       });
       const personList = Object.entries(byPerson).sort((a,b)=>b[1]-a[1]);
       $("#sum_person").innerHTML = personList.length===0 ? `<div class="notice">Sin salidas.</div>` :
-        personList.map(([k,v])=>`<div style="display:flex;justify-content:space-between;border:1px solid var(--b);border-radius:14px;padding:10px">
-          <b>${k}</b><b>${v}</b></div>`).join("");
+        personList.map(([k,v])=>`<div style="display:flex;justify-content:space-between;border:1px solid var(--b);border-radius:14px;padding:10px"><b>${k}</b><b>${v}</b></div>`).join("");
 
       const bySize = {};
       outs.forEach(m=>{
@@ -884,10 +714,9 @@
         const rows = [header].concat(
           outs.map(m => [m.date, m.productName, m.size, m.gender, m.qty, m.toPerson, m.note || ""])
         );
-        const csv = toCSV(rows);
         const d = new Date();
         const stamp = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-        downloadText(`reporte-salidas-${stamp}.csv`, csv);
+        downloadText(`reporte-salidas-${stamp}.csv`, toCSV(rows));
       };
     };
 
